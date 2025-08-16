@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import messagebox, simpledialog, filedialog
+import ttkbootstrap as ttk
 from pathlib import Path
 import re
 import sys
@@ -65,8 +66,9 @@ def open_editor(parent: tk.Tk, title: str, path: Path):
     win = tk.Toplevel(parent)
     win.title(f"Edit - {title}")
     win.geometry("600x400")
+    win.config(bg=BG)
 
-    txt = tk.Text(win, wrap="word", undo=True)
+    txt = tk.Text(win, wrap="word", undo=True, font=FONT, bg=ENTRY_BG, fg=ENTRY_FG, insertbackground=FG)
     txt.pack(fill="both", expand=True, padx=10, pady=10)
 
     txt.insert("1.0", read_notes(path))
@@ -74,7 +76,7 @@ def open_editor(parent: tk.Tk, title: str, path: Path):
     txt.focus_set()
 
     status = tk.StringVar(value="Saved")
-    tk.Label(win, textvariable=status, anchor="w").pack(fill="x", padx=10, pady=(0,8))
+    tk.Label(win, textvariable=status, anchor="w", bg=BG).pack(fill="x", padx=10, pady=(0,8))
 
     def mark_dirty(_evt=None):
         status.set("Unsaved...")
@@ -91,16 +93,16 @@ def open_editor(parent: tk.Tk, title: str, path: Path):
         do_save()
         win.destroy()
 
-    bar = tk.Frame(win); bar.pack(pady=(0,10))
-    tk.Button(bar, text="Save", command=do_save).pack(side="left", padx=6)
-    tk.Button(bar, text="Save & Close", command=do_save_and_close).pack(side="left", padx=6)
+    bar = tk.Frame(win, bg=BG); bar.pack(pady=(0,10))
+    tk.Button(bar, text="Save", command=do_save, font=FONT, bg=BTN_BG, fg=BTN_FG, activebackground="#444").pack(side="left", padx=6)
+    tk.Button(bar, text="Save & Close", font=FONT, command=do_save_and_close, bg=BTN_BG, fg=BTN_FG, activebackground="#444").pack(side="left", padx=6)
 
     win.bind("<Control-s>", lambda e: (do_save(), "break"))
 
     def on_close():
         if status.get() != "Saved":
             if messagebox.askyesno("Unsaved changes", "Save before closing?", parent=win):
-                do_save()
+                do_save() 
         win.destroy()
     win.protocol("WM_DELETE_WINDOW", on_close)
 
@@ -112,34 +114,45 @@ BTN_BG = "#2c313c"
 BTN_FG = "#e0e0e0"  
 ENTRY_BG = "#23272e"
 ENTRY_FG = "#e0e0e0"
+FONT = ("Segoe UI", 11)
+TITLE_FONT = ("Segoe UI", 14, "bold")
 def build_ui():
-    root = tk.Tk()
+    root = ttk.Window(themename="darkly")
     root.title("Notepads")
     ico_path = resource_path("notepad.ico")
     root.iconbitmap(ico_path)
 
+    def on_right_click(event):
+        idx = lb.nearest(event.y)
+        if idx >= 0:
+            lb.selection_clear(0, tk.END)
+            lb.selection_set(idx)
+            lb.activate(idx)
+            menu.tk_popup(event.x_root, event.y_root)
+
     root.configure(bg=BG)
 
-    tk.Label(root, text="Your Notes", font=("Segoe UI", 14, "bold"),
-             bg=BG, fg=FG).pack(anchor="w", padx=10, pady=(10,0))
+    tk.Label(root, text="Your Notes", font=TITLE_FONT, bg=BG, fg=FG).pack(anchor="w", padx=10, pady=(10,0))
 
     list_frame = tk.Frame(root, bg=BG); list_frame.pack(fill="both", expand=True, padx=10, pady=10)
     sb = tk.Scrollbar(list_frame, orient="vertical")
-    lb = tk.Listbox(list_frame, height=12, activestyle="dotbox", yscrollcommand=sb.set,
+    lb = tk.Listbox(list_frame, height=12, font=FONT, activestyle="dotbox", yscrollcommand=sb.set,
                     bg=ENTRY_BG, fg=ENTRY_FG, selectbackground="#444", selectforeground=FG)
     sb.config(command=lb.yview)
     lb.pack(side="left", fill="both", expand=True)
     sb.pack(side="right", fill="y")
 
     bar = tk.Frame(root, bg=BG); bar.pack(pady=(0,10))
-    btn_new_folder = tk.Button(bar, text="New Folder", bg=BTN_BG, fg=BTN_FG, activebackground="#444")
-    btn_new = tk.Button(bar, text="Create New", bg=BTN_BG, fg=BTN_FG, activebackground="#444")
-    btn_open = tk.Button(bar, text="Open", bg=BTN_BG, fg=BTN_FG, activebackground="#444")
-    btn_rename = tk.Button(bar, text="Rename", bg=BTN_BG, fg=BTN_FG, activebackground="#444")
-    btn_delete = tk.Button(bar, text="Delete", bg=BTN_BG, fg=BTN_FG, activebackground="#444")
-    btn_refresh = tk.Button(bar, text="Refresh", bg=BTN_BG, fg=BTN_FG, activebackground="#444")
-    for b in (btn_new_folder, btn_new, btn_open, btn_rename, btn_delete, btn_refresh):
+    btn_new_folder = ttk.Button(bar, text="New Folder", bootstyle="Primary")
+    btn_new = ttk.Button(bar, text="Create New", bootstyle="primary")
+    btn_open = ttk.Button(bar, text="Open", bootstyle="info")
+    btn_refresh = ttk.Button(bar, text="Refresh", bootstyle="secondary")
+    def on_enter(e): e.widget.config(bg="#444")
+    def on_leave(e): e.widget.config(bg=BTN_BG)
+    for b in (btn_new_folder, btn_new, btn_open, btn_refresh):
         b.pack(side="left", padx=6)
+        b.bind("<Enter>", on_enter)
+        b.bind("<Leave>", on_leave)
 
     def refresh_list():
         lb.delete(0, tk.END)
@@ -233,10 +246,7 @@ def build_ui():
     btn_new_folder.config(command=create_folder)
     btn_new.config(command=create_new)
     btn_open.config(command=open_selected)
-    btn_rename.config(command=rename_selected)
-    btn_delete.config(command=delete_selected)
     btn_refresh.config(command=refresh_list)
-
     def on_listbox_double_click(event):
         idxs = lb.curselection()
         if not idxs:
@@ -253,7 +263,12 @@ def build_ui():
             if path.exists():
                 open_editor(root, title, path)
 
+    menu = tk.Menu(root, tearoff=0, bg=BG, fg=FG, font=FONT)
+    menu.add_command(label="Rename", command=rename_selected)
+    menu.add_command(label="Delete", command=delete_selected)
+
     lb.bind("<Double-Button-1>", on_listbox_double_click)
+    lb.bind("<Button-3>", on_right_click)  # Windows & Linux
 
     root.minsize(520, 420)
     return root
