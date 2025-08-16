@@ -10,10 +10,15 @@ def app_dir() -> Path:
         return Path(sys.executable).parent
     return Path(__file__).parent
 
+current_folder = None
 def notes_dir() -> Path:
-    d = app_dir() / "notes"
-    d.mkdir(exist_ok=True)
-    return d
+    base = app_dir() / "notes"
+    base.mkdir(exist_ok=True)
+    if current_folder:
+        folder = base / current_folder
+        folder.mkdir(exist_ok=True)
+        return folder
+    return base
 
 def slugify(title: str) -> str:
     slug = title.strip().lower()
@@ -22,6 +27,10 @@ def slugify(title: str) -> str:
     slug = re.sub(r"_+", "_", slug)     
     slug = slug[:80] or "untitled"
     return f"{slug}.txt"
+
+def list_folders():
+    base = app_dir() / "notes"
+    return [f.name for f in base.iterdir() if f.is_dir()]
 
 def list_notes():
     out = []
@@ -96,40 +105,60 @@ def open_editor(parent: tk.Tk, title: str, path: Path):
     win.protocol("WM_DELETE_WINDOW", on_close)
 
 # ---------- Home Screen ----------
+# Styling colors
+BG = "#23272e"    
+FG = "#e0e0e0"     
+BTN_BG = "#2c313c"  
+BTN_FG = "#e0e0e0"  
+ENTRY_BG = "#23272e"
+ENTRY_FG = "#e0e0e0"
 def build_ui():
     root = tk.Tk()
     root.title("Notepads")
     ico_path = resource_path("notepad.ico")
     root.iconbitmap(ico_path)
 
-    tk.Label(root, text="Your Notes", font=("Segoe UI", 14, "bold")).pack(anchor="w", padx=10, pady=(10,0))
+    root.configure(bg=BG)
 
-    list_frame = tk.Frame(root); list_frame.pack(fill="both", expand=True, padx=10, pady=10)
+    tk.Label(root, text="Your Notes", font=("Segoe UI", 14, "bold"),
+             bg=BG, fg=FG).pack(anchor="w", padx=10, pady=(10,0))
+
+    list_frame = tk.Frame(root, bg=BG); list_frame.pack(fill="both", expand=True, padx=10, pady=10)
     sb = tk.Scrollbar(list_frame, orient="vertical")
-    lb = tk.Listbox(list_frame, height=12, activestyle="dotbox", yscrollcommand=sb.set)
+    lb = tk.Listbox(list_frame, height=12, activestyle="dotbox", yscrollcommand=sb.set,
+                    bg=ENTRY_BG, fg=ENTRY_FG, selectbackground="#444", selectforeground=FG)
     sb.config(command=lb.yview)
     lb.pack(side="left", fill="both", expand=True)
     sb.pack(side="right", fill="y")
 
+    bar = tk.Frame(root, bg=BG); bar.pack(pady=(0,10))
+    btn_new_folder = tk.Button(bar, text="New Folder", bg=BTN_BG, fg=BTN_FG, activebackground="#444")
+    btn_new = tk.Button(bar, text="Create New", bg=BTN_BG, fg=BTN_FG, activebackground="#444")
+    btn_open = tk.Button(bar, text="Open", bg=BTN_BG, fg=BTN_FG, activebackground="#444")
+    btn_rename = tk.Button(bar, text="Rename", bg=BTN_BG, fg=BTN_FG, activebackground="#444")
+    btn_delete = tk.Button(bar, text="Delete", bg=BTN_BG, fg=BTN_FG, activebackground="#444")
+    btn_refresh = tk.Button(bar, text="Refresh", bg=BTN_BG, fg=BTN_FG, activebackground="#444")
+    for b in (btn_new_folder, btn_new, btn_open, btn_rename, btn_delete, btn_refresh):
+        b.pack(side="left", padx=6)
+
     def refresh_list():
         lb.delete(0, tk.END)
+        for folder in list_folders():
+            lb.insert(tk.END, f"[Folder] {folder}")
         for title, _path in list_notes():
             lb.insert(tk.END, title)
     refresh_list()
-
-    bar = tk.Frame(root); bar.pack(pady=(0,10))
-    btn_new = tk.Button(bar, text="Create New")
-    btn_open = tk.Button(bar, text="Open")
-    btn_rename = tk.Button(bar, text="Rename")
-    btn_delete = tk.Button(bar, text="Delete")
-    btn_refresh = tk.Button(bar, text="Refresh")
-    for b in (btn_new, btn_open, btn_rename, btn_delete, btn_refresh):
-        b.pack(side="left", padx=6)
 
     def selected_path() -> Path | None:
         idxs = lb.curselection()
         if not idxs:
             messagebox.showinfo("Select a note", "Choose a note from the list first.", parent=root)
+            return None
+        item = lb.get(idxs[0])
+        if item.startswith("[Folder] "):
+            global current_folder
+            current_folder = item.replace("[Folder] ", "")
+            refresh_list()
             return None
         title = lb.get(idxs[0])
         filename = slugify(title)
@@ -142,6 +171,17 @@ def build_ui():
             return None
         return p
     
+    def create_folder():
+        name = simpledialog.askstring("New Folder", "Folder name:", parent=root)
+        if not name:
+            return
+        folder = app_dir() / "notes" / name
+        if folder.exists():
+            messagebox.showerror("Exists", f"Folder '{name}' already exists.", parent=root)
+            return
+        folder.mkdir()
+        refresh_list()
+        
     def create_new():
         title = simpledialog.askstring("New note", "Note title:", parent=root)
         if not title:
@@ -190,13 +230,30 @@ def build_ui():
             except Exception as e:
                 messagebox.showerror("Delete failed", str(e), parent=root)
 
+    btn_new_folder.config(command=create_folder)
     btn_new.config(command=create_new)
     btn_open.config(command=open_selected)
     btn_rename.config(command=rename_selected)
     btn_delete.config(command=delete_selected)
     btn_refresh.config(command=refresh_list)
 
-    lb.bind("<Double-Button-1>", lambda e: open_selected())
+    def on_listbox_double_click(event):
+        idxs = lb.curselection()
+        if not idxs:
+            return
+        item = lb.get(idxs[0])
+        if item.startswith("[Folder] "):
+            global current_folder
+            current_folder = item.replace("[Folder] ", "")
+            refresh_list()
+        else:
+            # Open the note editor for notes
+            title = item
+            path = notes_dir() / slugify(title)
+            if path.exists():
+                open_editor(root, title, path)
+
+    lb.bind("<Double-Button-1>", on_listbox_double_click)
 
     root.minsize(520, 420)
     return root
